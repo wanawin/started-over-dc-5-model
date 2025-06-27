@@ -182,10 +182,15 @@ if seed and filters:
         checked = col.checkbox(name, key=key)
         col.markdown(f'<span title="{premise}" style="cursor: help;">❔</span>', unsafe_allow_html=True)
         if checked:
+            # Apply filter logic (stub)
             removed = []  # TODO: apply logic to session_pool
+            # Update session pool
             session_pool = [c for c in session_pool if c not in removed]
+            # Report removals
             st.write(f"{name} removed **{len(removed)}**, remaining **{len(session_pool)}**.")
-    # After manual filters
+            # Update remaining combos metric
+            st.sidebar.metric("Remaining Combos", len(session_pool))
+# After manual filters
     st.session_state.session_pool = session_pool
     st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
 
