@@ -49,6 +49,7 @@ def apply_primary_percentile(combos):
             removed.append(combo)
     return keep, removed
 
+
 def apply_deduplication(combos):
     seen, unique, removed = set(), [], []
     for c in combos:
@@ -58,10 +59,12 @@ def apply_deduplication(combos):
             removed.append(c)
     return unique, removed
 
+
 def apply_comparison_filter(enum_pool, seed_pool):
     keep = [c for c in enum_pool if c in seed_pool]
     removed = [c for c in enum_pool if c not in keep]
     return keep, removed
+
 
 def apply_trap_v3(pool, hot_digits, cold_digits, due_digits):
     return pool, []
@@ -73,13 +76,15 @@ def generate_combinations(seed, method="2-digit pair"):
     all_digits = '0123456789'
     combos = set()
     seed_str = str(seed)
-    if len(seed_str)<2: return []
-    if method=="1-digit":
+    if len(seed_str) < 2:
+        return []
+    if method == "1-digit":
         for d in seed_str:
             for p in product(all_digits, repeat=4):
                 combos.add(''.join(sorted(d + ''.join(p))))
     else:
-        pairs = set(''.join(sorted((seed_str[i], seed_str[j]))) for i in range(len(seed_str)) for j in range(i+1,len(seed_str)))
+        pairs = set(''.join(sorted((seed_str[i], seed_str[j])))
+                    for i in range(len(seed_str)) for j in range(i+1, len(seed_str)))
         for pair in pairs:
             for p in product(all_digits, repeat=3):
                 combos.add(''.join(sorted(pair + ''.join(p))))
@@ -103,14 +108,14 @@ st.title("DC-5 Midday Blind Predictor with Full Auto and Manual Filters")
 st.sidebar.header("🔧 Inputs and Settings")
 # Placeholder for dynamic Remaining Combos metric
 pos_remaining = st.sidebar.empty()
-# Initialize metric if session_pool exists
+
 def update_remaining():
     if 'session_pool' in st.session_state:
         pos_remaining.metric("Remaining Combos", len(st.session_state.session_pool), delta=None, key="remaining_metric")
-# Call initial update
+# Initial metric display
 update_remaining()
 
-prev_seed = st.sidebar.text_input("Previous 5-digit seed:")("Previous 5-digit seed:")
+prev_seed = st.sidebar.text_input("Previous 5-digit seed:")
 seed = st.sidebar.text_input("Current 5-digit seed:")
 hot_digits = [d for d in st.sidebar.text_input("Hot digits (comma-separated):").replace(' ','').split(',') if d]
 cold_digits = [d for d in st.sidebar.text_input("Cold digits (comma-separated):").replace(' ','').split(',') if d]
@@ -146,8 +151,8 @@ st.header("🔍 Manual Filters")
 if seed and filters:
     session_pool = st.session_state.get('session_pool', [])
     cols = st.columns(3)
-    for idx,f in enumerate(filters):
-        col = cols[idx%3]
+    for idx, f in enumerate(filters):
+        col = cols[idx % 3]
         name = f['name']
         premise = f.get('logic') or f.get('action') or ''
         key = f"filter_{idx}"
@@ -157,7 +162,7 @@ if seed and filters:
             removed = []  # TODO apply logic
             session_pool = [c for c in session_pool if c not in removed]
             st.write(f"{name} removed **{len(removed)}**, remaining **{len(session_pool)}**.")
-            st.sidebar.metric("Remaining Combos", len(session_pool))
+            pos_remaining.metric("Remaining Combos", len(session_pool), delta=None, key="remaining_metric")
     st.session_state.session_pool = session_pool
     st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
     if enable_trap:
