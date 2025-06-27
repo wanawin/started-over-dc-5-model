@@ -38,8 +38,32 @@ def load_ranked_filters(path: str):
 # Auto-filter stubs
 # ==============================
 def apply_primary_percentile(combos):
-    # TODO: implement static percentile zones filtering
-    return combos, []
+    """
+    Retain only combos whose digit-sum falls into the static high-yield percentile zones:
+    0–26%, 30–35%, 36–43%, 50–60%, 60–70%, 80–83%, 93–94% of the full enumeration.
+    """
+    # compute digit-sum metrics
+    metrics = np.array([sum(int(d) for d in combo) for combo in combos])
+    # define percentile bands
+    bands = [(0, 26), (30, 35), (36, 43), (50, 60), (60, 70), (80, 83), (93, 94)]
+    # precompute cutoff values
+    thresholds = {}
+    for low_pct, high_pct in bands:
+        thresholds[low_pct] = np.percentile(metrics, low_pct)
+        thresholds[high_pct] = np.percentile(metrics, high_pct)
+    # filter
+    keep, removed = [], []
+    for combo, m in zip(combos, metrics):
+        in_zone = False
+        for low_pct, high_pct in bands:
+            if thresholds[low_pct] <= m <= thresholds[high_pct]:
+                in_zone = True
+                break
+        if in_zone:
+            keep.append(combo)
+        else:
+            removed.append(combo)
+    return keep, removed
 
 def apply_deduplication(combos):
     seen, unique, removed = set(), [], []
