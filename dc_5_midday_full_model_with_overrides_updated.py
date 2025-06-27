@@ -101,12 +101,16 @@ st.title("DC-5 Midday Blind Predictor with Full Auto and Manual Filters")
 # Sidebar: Inputs and Controls
 # ------------------------------
 st.sidebar.header("🔧 Inputs and Settings")
+# Placeholder for dynamic Remaining Combos metric
+pos_remaining = st.sidebar.empty()
+# Initialize metric if session_pool exists
+def update_remaining():
+    if 'session_pool' in st.session_state:
+        pos_remaining.metric("Remaining Combos", len(st.session_state.session_pool), delta=None, key="remaining_metric")
+# Call initial update
+update_remaining()
 
-# Remaining combos metric at top
-if 'session_pool' in st.session_state:
-    st.sidebar.metric("Remaining Combos", len(st.session_state.session_pool))
-
-prev_seed = st.sidebar.text_input("Previous 5-digit seed:")
+prev_seed = st.sidebar.text_input("Previous 5-digit seed:")("Previous 5-digit seed:")
 seed = st.sidebar.text_input("Current 5-digit seed:")
 hot_digits = [d for d in st.sidebar.text_input("Hot digits (comma-separated):").replace(' ','').split(',') if d]
 cold_digits = [d for d in st.sidebar.text_input("Cold digits (comma-separated):").replace(' ','').split(',') if d]
