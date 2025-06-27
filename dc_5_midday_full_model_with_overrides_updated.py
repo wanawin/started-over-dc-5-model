@@ -7,28 +7,24 @@ import pandas as pd
 # ==============================
 # Configuration
 # ==============================
-FILTERS_CSV_PATH = '/mnt/data/manual_filters_ranked_by_elimination.csv'
+FILTERS_CSV_PATH = '/mnt/data/Filters_Ranked_Eliminations.csv'
 
 # ==============================
 # Helper Functions
 # ==============================
 
 def detect_auto_filters():
-    # Define automatic filters as (name, function) tuples
-    # Example: lambda combo,...: True to keep, False to remove
-    return [
-        # ('Repeating Digit Filter', lambda c, pd, h, cl, d: True),
-        # Add your actual auto-filter functions here
-    ]
+    # Define automatic filters as (name, function)
+    return []
+
 
 def detect_trap_v3_rankings(pool, previous_draw, hot_pool, cold_pool, due_pool):
-    # Implement Trap V3: flag or remove based on ranking logic
-    # For now, return unchanged pool and zero removed
+    # Placeholder: implement Trap V3 logic
     return pool, 0
 
+
 def detect_filter_pattern(filter_dict):
-    # Convert filter_dict['logic'] into regex or callable
-    # Placeholder: match nothing
+    # Compile a regex from filter_dict['logic'] or other
     return re.compile(r"^$"), {}
 
 # ==============================
@@ -41,13 +37,14 @@ def load_ranked_filters(path: str):
     except Exception as e:
         st.error(f"Failed to load filters CSV: {e}")
         return []
-    # Normalize column names
+    # Rename needed columns
     df = df.rename(columns={
         next(c for c in df.columns if 'name' in c.lower()): 'name',
         next(c for c in df.columns if 'type' in c.lower()): 'type',
         next(c for c in df.columns if 'logic' in c.lower()): 'logic',
         next(c for c in df.columns if 'action' in c.lower()): 'action'
     })
+    # Filter only manual
     return df[df['type'].str.lower() == 'manual'].to_dict('records')
 
 # Load filters
@@ -74,52 +71,49 @@ with st.sidebar:
 if not (previous_draw.isdigit() and len(previous_draw) == 5):
     st.info("Enter the previous draw result to begin.")
 else:
-    # Parse digit pools
+    # Parse pools
     hot_pool = [d.strip() for d in hot_digits.split(',') if d.strip().isdigit()]
     cold_pool = [d.strip() for d in cold_digits.split(',') if d.strip().isdigit()]
     due_pool = [d.strip() for d in due_digits.split(',') if d.strip().isdigit()]
 
-    # Generate base combination pool
+    # Generate combination pool
     digit_sets = {
         "1-digit": list(map(str, range(10))),
         "2-digit": [''.join(p) for p in product(map(str, range(10)), repeat=2)],
         "3-digit": [''.join(p) for p in product(map(str, range(10)), repeat=3)]
     }
     base_set = digit_sets.get(generation_method, digit_sets["1-digit"])
-    comp_pool = [''.join(p) for p in product(base_set, repeat=5)]
+    pool = [''.join(p) for p in product(base_set, repeat=5)]
 
-    # Display count ribbon
+    # Display metrics
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Generated", len(comp_pool))
+    c1.metric("Total Generated", len(pool))
 
-    # Automatic filters
-    pool_after_auto = comp_pool.copy()
+    # Auto filters
     for name, func in auto_filters:
-        filtered = [c for c in pool_after_auto if func(c, previous_draw, hot_pool, cold_pool, due_pool)]
-        c2.metric(f"Auto: {name}", len(filtered), -(len(pool_after_auto)-len(filtered)))
-        pool_after_auto = filtered
+        filtered = [c for c in pool if func(c, previous_draw, hot_pool, cold_pool, due_pool)]
+        c2.metric(f"Auto: {name}", len(filtered), -(len(pool)-len(filtered)))
+        pool = filtered
     if not auto_filters:
-        c2.metric("After Auto Filters", len(pool_after_auto))
+        c2.metric("After Auto Filters", len(pool))
 
     # Trap V3
     if enable_trap_v3:
-        pool_after_trap, removed = detect_trap_v3_rankings(pool_after_auto, previous_draw, hot_pool, cold_pool, due_pool)
-        c3.metric("After Trap V3", len(pool_after_trap), -removed)
+        pool, removed = detect_trap_v3_rankings(pool, previous_draw, hot_pool, cold_pool, due_pool)
+        c3.metric("After Trap V3", len(pool), -removed)
     else:
-        pool_after_trap = pool_after_auto
         c3.metric("Trap V3 Disabled", "—")
 
     # Manual filters
-    pool_after_manual = pool_after_trap.copy()
     for f in manual_filters:
+        before = len(pool)
         pattern, _ = detect_filter_pattern(f)
-        before = len(pool_after_manual)
-        pool_after_manual = [c for c in pool_after_manual if not pattern.match(c)]
-        c4.metric(f['name'], len(pool_after_manual), -(before-len(pool_after_manual)))
+        pool = [c for c in pool if not pattern.match(c)]
+        c4.metric(f['name'], len(pool), -(before-len(pool)))
     if not manual_filters:
-        c4.metric("After Manual Filters", len(pool_after_manual))
+        c4.metric("After Manual Filters", len(pool))
 
-    # Show final combos
+    # Final display
     st.header("Final Combination Pool")
-    st.write(f"First 100 of {len(pool_after_manual)} combos:")
-    st.dataframe(pd.DataFrame(pool_after_manual, columns=["combo"]).head(100))
+    st.write(f"Showing first 100 of {len(pool)} combos")
+    st.dataframe(pd.DataFrame(pool, columns=["combo"]).head(100))
