@@ -5,7 +5,7 @@ from itertools import product
 import pandas as pd
 
 # ==============================
-# Load and Parse Ranked Filters
+# Cache and Load Ranked Filters
 # ==============================
 @st.cache_data
 def load_ranked_filters(path: str):
@@ -33,7 +33,7 @@ def load_ranked_filters(path: str):
     return df[['name','type','logic','action']].to_dict(orient='records')
 
 # ==============================
-# Auto-filter stubs
+# Auto-filter implementations
 # ==============================
 def apply_primary_percentile(combos):
     metrics = np.array([sum(int(d) for d in combo) for combo in combos])
@@ -41,58 +41,41 @@ def apply_primary_percentile(combos):
     thresholds = {p: np.percentile(metrics,p) for band in bands for p in band}
     keep, removed = [], []
     for combo, m in zip(combos, metrics):
-        if any(thresholds[low] <= m <= thresholds[high] for low, high in bands):
-            keep.append(combo)
-        else:
-            removed.append(combo)
+        if any(thresholds[low] <= m <= thresholds[high] for low, high in bands): keep.append(combo)
+        else: removed.append(combo)
     return keep, removed
-
 
 def apply_deduplication(combos):
     seen, unique, removed = set(), [], []
     for c in combos:
         if c not in seen:
-            seen.add(c)
-            unique.append(c)
+            seen.add(c); unique.append(c)
         else:
             removed.append(c)
     return unique, removed
 
+def generate_combinations(seed, method="2-digit pair"):
+    all_digits = '0123456789'; combos = set(); seed_str = str(seed)
+    if len(seed_str) < 2: return []
+    if method == "1-digit":
+        for d in seed_str:
+            for p in product(all_digits, repeat=4): combos.add(''.join(sorted(d + ''.join(p))))
+    else:
+        pairs = set(''.join(sorted((seed_str[i], seed_str[j]))) for i in range(len(seed_str)) for j in range(i+1, len(seed_str)))
+        for pair in pairs:
+            for p in product(all_digits, repeat=3): combos.add(''.join(sorted(pair + ''.join(p))))
+    return sorted(combos)
 
 def apply_comparison_filter(enum_pool, seed_pool):
     keep = [c for c in enum_pool if c in seed_pool]
     removed = [c for c in enum_pool if c not in keep]
     return keep, removed
 
-
-def apply_trap_v3(pool, hot_digits, cold_digits, due_digits):
-    return pool, []
-
 # ==============================
-# Generate seed-based combos
-# ==============================
-def generate_combinations(seed, method="2-digit pair"):
-    all_digits = '0123456789'
-    combos = set()
-    seed_str = str(seed)
-    if len(seed_str) < 2:
-        return []
-    if method == "1-digit":
-        for d in seed_str:
-            for p in product(all_digits, repeat=4):
-                combos.add(''.join(sorted(d + ''.join(p))))
-    else:
-        pairs = set(''.join(sorted((seed_str[i], seed_str[j]))) for i in range(len(seed_str)) for j in range(i+1, len(seed_str)))
-        for pair in pairs:
-            for p in product(all_digits, repeat=3):
-                combos.add(''.join(sorted(pair + ''.join(p))))
-    return sorted(combos)
-
-# ==============================
-# Permutation check helper
+# Helper for permutation check
 # ==============================
 def permutation_exists(combo: str, pool: list) -> bool:
-    return ''.join(sorted(combo)) in {''.join(sorted(c)) for c in pool}
+    return ''.join(sorted(combo.strip())) in {''.join(sorted(c)) for c in pool}
 
 # ==============================
 # Streamlit App
@@ -101,11 +84,46 @@ st.set_page_config(layout="wide")
 st.title("DC-5 Midday Blind Predictor with Full Auto and Manual Filters")
 
 # ------------------------------
+# Sidebar: Inputs & Persistent Metric
+# ------------------------------
+st.sidebar.header("🔧 Inputs and Settings")
+pos_remaining = st.sidebar.empty()
+def update_remaining():
+    if 'session_pool' in st.session_state:
+        pos_remaining.metric("Remaining Combos", len(st.session_state.session_pool))
+
+prev_seed = st.sidebar.text_input("Previous 5-digit seed:")
+seed = st.sidebar.text_input("Current 5-digit seed:")
+hot_digits = [d for d in st.sidebar.text_input("Hot digits (comma-separated):").replace(' ','').split(',') if d]
+cold_digits = [d for d in st.sidebar.text_input("Cold digits (comma-separated):").replace(' ','').split(',') if d]
+due_digits = [d for d in st.sidebar.text_input("Due digits (comma-separated):").replace(' ','').split(',') if d]
+method = st.sidebar.selectbox("Generation Method:", ["1-digit","2-digit pair"])
+enable_trap = st.sidebar.checkbox("Enable Trap V3 Ranking")
+combo_check = st.sidebar.text_input("Check permutation of combo:")
+
+# ------------------------------
+# Main Processing Pipeline
+# ------------------------------
+if seed:
+    enum_pool = [str(i).zfill(5) for i in range(100000)]
+    st.write(f"Step 1: Enumeration — **{len(enum_pool)}** combos.")
+    pct_pool, pct_removed = apply_primary_percentile(enum_pool)
+    st.write(f"Step 2: Primary percentile removed **{len(pct_removed)}**, remaining **{len(pct_pool)}**.")
+    dedup_pool, dedup_removed = apply_deduplication(pct_pool)
+    st.write(f"Step 3: Deduplication removed **{len(dedup_removed)}**, remaining **{len(dedup_pool)}**.")
+    seed_pool = generate_combinations(seed, method)
+    st.write(f"Step 4: Seed-generation ({method}) yields **{len(seed_pool)}** combos.")
+    comp_pool, comp_removed = apply_comparison_filter(dedup_pool, seed_pool)
+    st.write(f"Step 5: Comparison removed **{len(comp_removed)}**, remaining **{len(comp_pool)}**.")
+    st.session_state.session_pool = comp_pool
+    update_remaining()
+    st.write(f"**Pool before manual filters: {len(comp_pool)} combos.**")
+else:
+    st.info("Enter a 5-digit seed to begin processing.")
+
+# ------------------------------
 # Manual Filters (Main)
 # ------------------------------
-# Initialize session_pool for manual filters
-session_pool = st.session_state.get('session_pool', [])
-st.write(f"**[DEBUG] Starting manual filters with {len(session_pool)} combos**")
 filters = load_ranked_filters('Filters_Ranked_Eliminations.csv')
 st.header("🔍 Manual Filters")
 if seed and filters:
@@ -113,38 +131,29 @@ if seed and filters:
     cols = st.columns(3)
     for idx, f in enumerate(filters):
         col = cols[idx % 3]
-        name = f['name']
-        premise = f.get('logic') or f.get('action') or ''
-        key = f"filter_{idx}"
-        checked = col.checkbox(name, key=key)
+        name = f['name']; premise = f.get('logic') or f.get('action') or ''
+        checked = col.checkbox(name, key=f"filter_{idx}")
         col.markdown(f'<span title="{premise}" style="cursor: help;">❔</span>', unsafe_allow_html=True)
         if checked:
-            # Debug: capture before
-            before_count = len(session_pool)
-            removed = []  # TODO apply logic to populate removed
-            # Debug: simulate removal for test
-            # e.g., removed = session_pool[:1]
+            # TODO: apply real logic here to populate removed
+            removed = session_pool[:1]  # placeholder for testing
             session_pool = [c for c in session_pool if c not in removed]
-            after_count = len(session_pool)
-            st.write(f"{name} removed **{len(removed)}**, remaining **{after_count}**.")
-            if removed:
-                with st.expander(f"Show combos removed by '{name}'"):
-                    st.write(removed)
-            # Debug ribbon update
+            st.write(f"{name} removed **{len(removed)}**, remaining **{len(session_pool)}**.")
+            with st.expander(f"Show combos removed by '{name}'"):
+                st.write(removed)
+            st.session_state.session_pool = session_pool
             update_remaining()
-    # After all manual filters
-    st.session_state.session_pool = session_pool
     st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
     if enable_trap:
         trap_pool, trap_removed = apply_trap_v3(session_pool, hot_digits, cold_digits, due_digits)
         session_pool = trap_pool
         st.session_state.session_pool = session_pool
         st.write(f"Trap V3 removed **{len(trap_removed)}**, remaining **{len(session_pool)}**.")
-        st.write(f"**Final pool: {len(session_pool)} combos.**")
+        update_remaining()
 
 # ------------------------------
-# Permutation Check (Sidebar)
+# Sidebar: Permutation Check
 # ------------------------------
 if combo_check and 'session_pool' in st.session_state:
     found = permutation_exists(combo_check, st.session_state.session_pool)
-    st.sidebar.write(f"Permutation of **{combo_check}** is {'found' if found else 'not found'}." )
+    st.sidebar.write(f"Permutation of **{combo_check}** is {'found' if found else 'not found'}.")
