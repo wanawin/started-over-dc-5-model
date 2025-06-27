@@ -31,7 +31,9 @@ def load_ranked_filters(path: str):
 
 # Load the manual filters in the user-specified ranked order
 # Updated to use the uploaded file name
-filters = load_ranked_filters('/mnt/data/manual_filters_ranked_by_elimination.csv')
+# Load the manual filters in the user-specified ranked order
+# Pointing to the correct CSV filename in /mnt/data
+filters = load_ranked_filters('/mnt/data/Filters_Ranked_Eliminations.csv')
 
 # ==============================
 # Main App Logic
