@@ -54,6 +54,15 @@ def apply_deduplication(combos):
             removed.append(c)
     return unique, removed
 
+# Combined auto and seed-based compare
+
+def apply_comparison_filter(enum_pool, seed_pool):
+    keep = [c for c in enum_pool if c in seed_pool]
+    removed = [c for c in enum_pool if c not in keep]
+    return keep, removed
+
+# Seeded combo generation
+
 def generate_combinations(seed, method="2-digit pair"):
     all_digits = '0123456789'; combos = set(); seed_str = str(seed)
     if len(seed_str) < 2: return []
@@ -66,19 +75,56 @@ def generate_combinations(seed, method="2-digit pair"):
             for p in product(all_digits, repeat=3): combos.add(''.join(sorted(pair + ''.join(p))))
     return sorted(combos)
 
-def apply_comparison_filter(enum_pool, seed_pool):
-    keep = [c for c in enum_pool if c in seed_pool]
-    removed = [c for c in enum_pool if c not in keep]
+# ==============================
+# Manual Filter Logic Helpers
+# ==============================
+def seed_sum_matches_condition(seed_sum: int, condition_str: str) -> bool:
+    s = condition_str.strip()
+    if m := re.match(r'[≤<=]\s*(\d+)', s): return seed_sum <= int(m.group(1))
+    if m := re.match(r'(?:≥|>=)?\s*(\d+)\s*or\s*higher', s, re.IGNORECASE): return seed_sum >= int(m.group(1))
+    if m := re.match(r'(\d+)\s*[–-]\s*(\d+)', s): low, high = int(m.group(1)), int(m.group(2)); return low <= seed_sum <= high
+    if s.isdigit(): return seed_sum == int(s)
+    return False
+
+def apply_sum_range_filter(combos, min_sum, max_sum):
+    keep = [c for c in combos if min_sum <= sum(int(d) for d in c) <= max_sum]
+    removed = [c for c in combos if c not in keep]
     return keep, removed
 
+def apply_keep_sum_range_if_seed_sum(combos, seed_sum, min_sum, max_sum, seed_condition_str):
+    if seed_sum_matches_condition(seed_sum, seed_condition_str): return apply_sum_range_filter(combos, min_sum, max_sum)
+    return combos, []
+
+def apply_conditional_seed_contains(combos, seed_digits, seed_digit, required_winners):
+    if seed_digit in seed_digits:
+        keep, removed = [], []
+        for c in combos:
+            if any(str(d) in c for d in required_winners): keep.append(c)
+            else: removed.append(c)
+        return keep, removed
+    return combos, []
+
+def detect_filter_pattern(f):
+    logic = f.get('logic','') or ''
+    low = logic.lower()
+    if m := re.search(r'between\s*(\d+)\s*and\s*(\d+).*?if', low):
+        return 'conditional_sum_if_seed', {'low': int(m.group(1)), 'high': int(m.group(2)), 'condition': logic}
+    if m := re.search(r'eliminate if sum\s*<\s*(\d+)\s*or\s*>\s*(\d+)', low):
+        return 'sum_range', {'low': int(m.group(1)), 'high': int(m.group(2))}
+    if 'seed contains' in low and 'winner must contain' in low:
+        sd = int(re.search(r'seed contains\s*(\d+)', low).group(1))
+        reqs = [int(x) for x in re.findall(r'contain(?: either)? digit (\d)', low)]
+        return 'conditional_seed_contains', {'seed_digit': sd, 'required': reqs}
+    return 'unknown', {}
+
 # ==============================
-# Helper for permutation check
+# Helper: Permutation Check
 # ==============================
 def permutation_exists(combo: str, pool: list) -> bool:
     return ''.join(sorted(combo.strip())) in {''.join(sorted(c)) for c in pool}
 
 # ==============================
-# Streamlit App
+# Streamlit App Layout
 # ==============================
 st.set_page_config(layout="wide")
 st.title("DC-5 Midday Blind Predictor with Full Auto and Manual Filters")
@@ -91,7 +137,6 @@ pos_remaining = st.sidebar.empty()
 def update_remaining():
     if 'session_pool' in st.session_state:
         pos_remaining.metric("Remaining Combos", len(st.session_state.session_pool))
-
 prev_seed = st.sidebar.text_input("Previous 5-digit seed:")
 seed = st.sidebar.text_input("Current 5-digit seed:")
 hot_digits = [d for d in st.sidebar.text_input("Hot digits (comma-separated):").replace(' ','').split(',') if d]
@@ -135,12 +180,22 @@ if seed and filters:
         checked = col.checkbox(name, key=f"filter_{idx}")
         col.markdown(f'<span title="{premise}" style="cursor: help;">❔</span>', unsafe_allow_html=True)
         if checked:
-            # TODO: apply real logic here to populate removed
-            removed = session_pool[:1]  # placeholder for testing
-            session_pool = [c for c in session_pool if c not in removed]
+            pattern, params = detect_filter_pattern(f)
+            seed_sum = sum(int(d) for d in seed) if seed.isdigit() else 0
+            seed_digits = list(seed)
+            if pattern == 'sum_range':
+                pool, removed = apply_sum_range_filter(session_pool, params['low'], params['high'])
+            elif pattern == 'conditional_sum_if_seed':
+                pool, removed = apply_keep_sum_range_if_seed_sum(session_pool, seed_sum, params['low'], params['high'], params['condition'])
+            elif pattern == 'conditional_seed_contains':
+                pool, removed = apply_conditional_seed_contains(session_pool, seed_digits, params['seed_digit'], params['required'])
+            else:
+                pool, removed = session_pool, []
+            session_pool = pool
             st.write(f"{name} removed **{len(removed)}**, remaining **{len(session_pool)}**.")
-            with st.expander(f"Show combos removed by '{name}'"):
-                st.write(removed)
+            if removed:
+                with st.expander(f"Show combos removed by '{name}'"):
+                    st.write(removed)
             st.session_state.session_pool = session_pool
             update_remaining()
     st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
@@ -156,4 +211,4 @@ if seed and filters:
 # ------------------------------
 if combo_check and 'session_pool' in st.session_state:
     found = permutation_exists(combo_check, st.session_state.session_pool)
-    st.sidebar.write(f"Permutation of **{combo_check}** is {'found' if found else 'not found'}.")
+    st.sidebar.write(f"Permutation of **{combo_check}** is {'found' if found else 'not found'}." )
