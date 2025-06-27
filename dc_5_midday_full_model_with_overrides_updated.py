@@ -30,7 +30,8 @@ def load_ranked_filters(path: str):
     return df.to_dict('records')
 
 # Load the manual filters in the user-specified ranked order
-filters = load_ranked_filters('/mnt/data/Filters_Ranked_Eliminations.csv')
+# Updated to use the uploaded file name
+filters = load_ranked_filters('/mnt/data/manual_filters_ranked_by_elimination.csv')
 
 # ==============================
 # Main App Logic
