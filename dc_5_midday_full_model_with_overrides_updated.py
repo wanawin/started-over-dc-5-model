@@ -107,7 +107,7 @@ st.title("DC-5 Midday Blind Predictor with Full Auto and Manual Filters")
 session_pool = st.session_state.get('session_pool', [])
 st.write(f"**[DEBUG] Starting manual filters with {len(session_pool)} combos**")
 filters = load_ranked_filters('Filters_Ranked_Eliminations.csv')
-st.header("🔍 Manual Filters")("🔍 Manual Filters")
+st.header("🔍 Manual Filters")
 if seed and filters:
     session_pool = st.session_state.get('session_pool', [])
     cols = st.columns(3)
@@ -134,7 +134,6 @@ if seed and filters:
             update_remaining()
     # After all manual filters
     st.session_state.session_pool = session_pool
-    st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
     st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
     if enable_trap:
         trap_pool, trap_removed = apply_trap_v3(session_pool, hot_digits, cold_digits, due_digits)
