@@ -47,12 +47,35 @@ def load_ranked_filters(path: str):
     # Filter only manual
     return df[df['type'].str.lower() == 'manual'].to_dict('records')
 
-# Load filters
-auto_filters = detect_auto_filters()
-manual_filters = load_ranked_filters(FILTERS_CSV_PATH)
+# Load filters (allow upload override)
+with st.sidebar.expander("Upload Manual Filters CSV (optional)"):
+    uploaded = st.file_uploader("CSV file", type=['csv'])
+    if uploaded:
+        try:
+            manual_filters = pd.read_csv(uploaded)
+            st.sidebar.success("Loaded filters from upload.")
+        except Exception as e:
+            st.sidebar.error(f"Failed to parse uploaded CSV: {e}")
+            manual_filters = []
+    else:
+        manual_filters = load_ranked_filters(FILTERS_CSV_PATH)
 
-# ==============================
-# Streamlit App UI
+# Rename loaded manual_filters entries if necessary
+if isinstance(manual_filters, list):
+    # already list of dicts
+    pass
+elif isinstance(manual_filters, pd.DataFrame):
+    df = manual_filters.rename(columns={
+        next(c for c in manual_filters.columns if 'name' in c.lower()): 'name',
+        next(c for c in manual_filters.columns if 'type' in c.lower()): 'type',
+        next(c for c in manual_filters.columns if 'logic' in c.lower()): 'logic',
+        next(c for c in manual_filters.columns if 'action' in c.lower()): 'action'
+    })
+    manual_filters = df[df['type'].str.lower()=='manual'].to_dict('records')
+
+# Auto filters remains
+auto_filters = detect_auto_filters()
+
 # ==============================
 st.set_page_config(layout="wide")
 st.title("DC-5 Midday Blind Predictor")
