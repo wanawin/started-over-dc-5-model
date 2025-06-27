@@ -10,21 +10,27 @@ import pandas as pd
 @st.cache_data
 def load_ranked_filters(path: str):
     df = pd.read_csv(path)
-    # normalize column names
-    df.columns = [c.lower().strip() for c in df.columns]
-    # map synonyms
-    rename_map = {}
-    for syn in ['filter name', 'filtername']:
-        if syn in df.columns:
-            rename_map[syn] = 'name'
-    df.rename(columns=rename_map, inplace=True)
-    required = {'name', 'type', 'logic', 'action'}
-    missing = required - set(df.columns)
+    # Detect essential columns by keyword
+    cols = df.columns.tolist()
+    name_col = next((c for c in cols if 'name' in c.lower()), None)
+    type_col = next((c for c in cols if 'type' in c.lower()), None)
+    logic_col = next((c for c in cols if 'logic' in c.lower()), None)
+    action_col = next((c for c in cols if 'action' in c.lower()), None)
+    missing = [label for label, col in [('name', name_col), ('type', type_col), ('logic', logic_col), ('action', action_col)] if col is None]
     if missing:
-        st.sidebar.error(f"Missing columns in filters CSV: {missing}")
+        st.sidebar.error(f"Filters CSV missing required columns: {missing}")
         return []
-    # return list of filter dicts
-    return df.to_dict(orient='records')
+    # Normalize column names to standard keys
+    df = df.rename(columns={
+        name_col: 'name',
+        type_col: 'type',
+        logic_col: 'logic',
+        action_col: 'action'
+    })
+    # Strip whitespace and normalize text fields
+    for field in ['name', 'type', 'logic', 'action']:
+        df[field] = df[field].astype(str).str.strip()
+    return df[['name', 'type', 'logic', 'action']].to_dict(orient='records')
 
 # ==============================
 # Auto-filter stubs
