@@ -26,34 +26,20 @@ def load_ranked_filters(path: str):
     # return list of filter dicts
     return df.to_dict(orient='records')
 
+# ==============================
 # Auto-filter stubs
+# ==============================
 
 def apply_primary_percentile(combos):
     """
-    Retain only combos falling in predetermined high-yield percentile zones
-    of the digit-sum metric: 0–26%, 30–35%, 36–43%, 50–60%, 60–70%, 80–83%, 93–94%.
+    Placeholder: primary percentile filtering (static bands) to be fleshed in.
     """
-    # compute digit-sum for each combo
-    metrics = np.array([sum(int(d) for d in combo) for combo in combos])
-    # predefined percentile bands
-    bands = [(0, 26), (30, 35), (36, 43), (50, 60), (60, 70), (80, 83), (93, 94)]
-    # calculate threshold values for each percentile
-    thresholds = {p: np.percentile(metrics, p) for band in bands for p in band}
-    keep, removed = [], []
-    for combo, m in zip(combos, metrics):
-        # check if metric falls in any high-yield band
-        in_zone = any(thresholds[low] <= m <= thresholds[high] for (low, high) in bands)
-        if in_zone:
-            keep.append(combo)
-        else:
-            removed.append(combo)
-    return keep, removed
+    return combos, []
 
 
 def apply_deduplication(combos):
     seen = set()
-    unique = []
-    removed = []
+    unique, removed = [], []
     for c in combos:
         if c not in seen:
             seen.add(c)
@@ -64,7 +50,6 @@ def apply_deduplication(combos):
 
 
 def apply_comparison_filter(enum_pool, seed_pool):
-    # intersect enumeration and seed-generated pools
     keep = [c for c in enum_pool if c in seed_pool]
     removed = [c for c in enum_pool if c not in keep]
     return keep, removed
@@ -72,10 +57,11 @@ def apply_comparison_filter(enum_pool, seed_pool):
 
 def apply_trap_v3(pool, hot_digits, cold_digits, due_digits):
     """Placeholder for Trap V3 ranking logic"""
-    # TODO: implement Trap V3
     return pool, []
 
+# ==============================
 # Generate seed-based combos
+# ==============================
 
 def generate_combinations(seed, method="2-digit pair"):
     all_digits = '0123456789'
@@ -95,6 +81,15 @@ def generate_combinations(seed, method="2-digit pair"):
             for p in product(all_digits, repeat=3):
                 combos.add(''.join(sorted(pair + ''.join(p))))
     return sorted(combos)
+
+# ==============================
+# Check permutation helper
+# ==============================
+
+def permutation_exists(combo: str, pool: list) -> bool:
+    """Check if any permutation of 'combo' exists in the sorted pool."""
+    key = ''.join(sorted(combo.strip()))
+    return key in pool
 
 # ==============================
 # Streamlit App
@@ -141,7 +136,7 @@ if seed:
 # Workflow: Auto Filters + Manual
 # ==============================
 if seed:
-    # 1. Full enumeration
+    # 1. Enumeration
     enum_pool = [str(i).zfill(5) for i in range(100000)]
     st.write(f"Step 1: Enumeration — {len(enum_pool)} combos.")
 
@@ -176,6 +171,14 @@ if seed:
         session_pool = trap_pool
         st.write(f"Step 7: Trap V3 removed {len(trap_removed)}, remaining {len(session_pool)}.")
 
+    # Final report
     st.write(f"**Final pool: {len(session_pool)} combos.**")
+
+    # Check specific combination permutations
+    combo_check = st.sidebar.text_input("Check permutation of combo:")
+    if combo_check:
+        exists = permutation_exists(combo_check, session_pool)
+        msg = "found" if exists else "not found"
+        st.write(f"Permutation of **{combo_check}** is **{msg}** in the final pool.")
 else:
     st.info("Enter a 5-digit seed to begin processing.")
