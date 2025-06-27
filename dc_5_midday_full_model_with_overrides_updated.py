@@ -5,7 +5,7 @@ from itertools import product
 import pandas as pd
 
 # ==============================
-# Load and Parse Ranked Filters (includes manual, optional, operational)
+# Load and Parse Ranked Filters
 # ==============================
 @st.cache_data
 def load_ranked_filters(path: str):
@@ -93,7 +93,7 @@ st.set_page_config(layout="wide")
 st.title("DC-5 Midday Blind Predictor with Full Auto and Manual Filters")
 
 # ------------------------------
-# Sidebar: Inputs and Settings
+# Sidebar: Inputs and Controls
 # ------------------------------
 st.sidebar.header("🔧 Inputs and Settings")
 prev_seed = st.sidebar.text_input("Previous 5-digit seed:")
@@ -103,15 +103,48 @@ cold_digits = [d for d in st.sidebar.text_input("Cold digits (comma-separated):"
 due_digits = [d for d in st.sidebar.text_input("Due digits (comma-separated):").replace(' ', '').split(',') if d]
 method = st.sidebar.selectbox("Generation Method:", ["1-digit", "2-digit pair"])
 enable_trap = st.sidebar.checkbox("Enable Trap V3 Ranking")
+combo_check = st.sidebar.text_input("Check permutation of combo:")
+
+# Dynamic ribbon showing remaining combos
+if 'session_pool' in st.session_state:
+    st.sidebar.metric("Remaining Combos", len(st.session_state.session_pool))
+
+# ==============================
+# Processing Workflow (Main)
+# ==============================
+if seed:
+    enum_pool = [str(i).zfill(5) for i in range(100000)]
+    st.write(f"Step 1: Enumeration — **{len(enum_pool)}** combos.")
+
+    pct_pool, pct_removed = apply_primary_percentile(enum_pool)
+    st.write(f"Step 2: Primary percentile removed **{len(pct_removed)}**, remaining **{len(pct_pool)}**.")
+
+    dedup_pool, dedup_removed = apply_deduplication(pct_pool)
+    st.write(f"Step 3: Deduplication removed **{len(dedup_removed)}**, remaining **{len(dedup_pool)}**.")
+
+    seed_pool = generate_combinations(seed, method)
+    st.write(f"Step 4: Seed-generation ({method}) yields **{len(seed_pool)}** combos.")
+
+    comp_pool, comp_removed = apply_comparison_filter(dedup_pool, seed_pool)
+    st.write(f"Step 5: Comparison removed **{len(comp_removed)}**, remaining **{len(comp_pool)}**.")
+
+    # Store intermediate for ribbon
+    st.session_state.session_pool = comp_pool
+
+    # Show final pool count before manual filters
+    st.write(f"**Pool before manual filters: {len(comp_pool)} combos.**")
+
+else:
+    st.info("Enter a 5-digit seed to begin processing.")
 
 # ------------------------------
-# Main: Filter Selection
+# Manual Filters (Main)
 # ------------------------------
+
 filters = load_ranked_filters('Filters_Ranked_Eliminations.csv')
 st.header("🔍 Manual Filters")
-if not filters:
-    st.error("No filters loaded.")
-else:
+if seed and filters:
+    session_pool = st.session_state.get('session_pool', [])
     n_cols = 3
     cols = st.columns(n_cols)
     filter_states = {}
@@ -124,37 +157,24 @@ else:
         key = f"filter_{idx}"
         checked = col.checkbox(name, key=key)
         col.markdown(f'<span title="{premise}" style="cursor: help;">❔</span>', unsafe_allow_html=True)
-        filter_states[name] = checked
-
-# ------------------------------
-# Processing Workflow
-# ------------------------------
-if seed:
-    enum_pool = [str(i).zfill(5) for i in range(100000)]
-    st.write(f"Step 1: Enumeration — {len(enum_pool)} combos.")
-    pct_pool, pct_removed = apply_primary_percentile(enum_pool)
-    st.write(f"Step 2: Primary percentile removed {len(pct_removed)}, remaining {len(pct_pool)}.")
-    dedup_pool, dedup_removed = apply_deduplication(pct_pool)
-    st.write(f"Step 3: Deduplication removed {len(dedup_removed)}, remaining {len(dedup_pool)}.")
-    seed_pool = generate_combinations(seed, method)
-    st.write(f"Step 4: Seed-generation ({method}) yields {len(seed_pool)} combos.")
-    comp_pool, comp_removed = apply_comparison_filter(dedup_pool, seed_pool)
-    st.write(f"Step 5: Comparison removed {len(comp_removed)}, remaining {len(comp_pool)}.")
-    session_pool = comp_pool
-    st.write("Step 6: Manual filters applied")
-    for name, active in filter_states.items():
-        if active:
-            removed = []  # TODO: apply logic
+        if checked:
+            removed = []  # TODO: apply logic to session_pool
             session_pool = [c for c in session_pool if c not in removed]
-            st.write(f"{name} removed {len(removed)}, remaining {len(session_pool)}.")
+            st.write(f"{name} removed **{len(removed)}**, remaining **{len(session_pool)}**.")
+    # After manual filters
+    st.session_state.session_pool = session_pool
+    st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
+
     if enable_trap:
         trap_pool, trap_removed = apply_trap_v3(session_pool, hot_digits, cold_digits, due_digits)
         session_pool = trap_pool
-        st.write(f"Step 7: Trap V3 removed {len(trap_removed)}, remaining {len(session_pool)}.")
-    st.write(f"**Final pool: {len(session_pool)} combos.**")
-    combo_check = st.text_input("Check permutation of combo:")
-    if combo_check:
-        found = permutation_exists(combo_check, session_pool)
-        st.write(f"Permutation of **{combo_check}** is {'found' if found else 'not found'}.")
-else:
-    st.info("Enter a 5-digit seed to begin processing.")
+        st.session_state.session_pool = session_pool
+        st.write(f"Trap V3 removed **{len(trap_removed)}**, remaining **{len(session_pool)}**.")
+        st.write(f"**Final pool: {len(session_pool)} combos.**")
+
+# ------------------------------
+# Permutation Check (Sidebar)
+# ------------------------------
+if combo_check and 'session_pool' in st.session_state:
+    found = permutation_exists(combo_check, st.session_state.session_pool)
+    st.sidebar.write(f"Permutation of **{combo_check}** is {'found' if found else 'not found'}." )
