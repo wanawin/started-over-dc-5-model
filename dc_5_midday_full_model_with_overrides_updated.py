@@ -110,8 +110,8 @@ pos_remaining = st.sidebar.empty()
 def update_remaining():
     if 'session_pool' in st.session_state:
         pos_remaining.metric("Remaining Combos", len(st.session_state.session_pool))
-# Initial metric display
-update_remaining()
+# Initial metric display (will update after processing steps)
+# update_remaining()
 
 prev_seed = st.sidebar.text_input("Previous 5-digit seed:")
 seed = st.sidebar.text_input("Current 5-digit seed:")
@@ -137,6 +137,8 @@ if seed:
     comp_pool, comp_removed = apply_comparison_filter(dedup_pool, seed_pool)
     st.write(f"Step 5: Comparison removed **{len(comp_removed)}**, remaining **{len(comp_pool)}**.")
     st.session_state.session_pool = comp_pool
+    # Update ribbon after auto filters
+    update_remaining()
     st.write(f"**Pool before manual filters: {len(comp_pool)} combos.**")
 else:
     st.info("Enter a 5-digit seed to begin processing.")
@@ -160,7 +162,8 @@ if seed and filters:
             removed = []  # TODO apply logic
             session_pool = [c for c in session_pool if c not in removed]
             st.write(f"{name} removed **{len(removed)}**, remaining **{len(session_pool)}**.")
-            pos_remaining.metric("Remaining Combos", len(session_pool))
+            # Update ribbon after manual filter
+            update_remaining()
     st.session_state.session_pool = session_pool
     st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
     if enable_trap:
