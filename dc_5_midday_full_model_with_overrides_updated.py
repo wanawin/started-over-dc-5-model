@@ -146,6 +146,7 @@ else:
 # ------------------------------
 # Manual Filters (Main)
 # ------------------------------
+st.write(f"**[DEBUG] Starting manual filters with {len(session_pool)} combos**")
 filters = load_ranked_filters('Filters_Ranked_Eliminations.csv')
 st.header("🔍 Manual Filters")
 if seed and filters:
@@ -159,12 +160,22 @@ if seed and filters:
         checked = col.checkbox(name, key=key)
         col.markdown(f'<span title="{premise}" style="cursor: help;">❔</span>', unsafe_allow_html=True)
         if checked:
-            removed = []  # TODO apply logic
+            # Debug: capture before
+            before_count = len(session_pool)
+            removed = []  # TODO apply logic to populate removed
+            # Debug: simulate removal for test
+            # e.g., removed = session_pool[:1]
             session_pool = [c for c in session_pool if c not in removed]
-            st.write(f"{name} removed **{len(removed)}**, remaining **{len(session_pool)}**.")
-            # Update ribbon after manual filter
+            after_count = len(session_pool)
+            st.write(f"{name} removed **{len(removed)}**, remaining **{after_count}**.")
+            if removed:
+                with st.expander(f"Show combos removed by '{name}'"):
+                    st.write(removed)
+            # Debug ribbon update
             update_remaining()
+    # After all manual filters
     st.session_state.session_pool = session_pool
+    st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
     st.write(f"**Final pool after manual filters: {len(session_pool)} combos.**")
     if enable_trap:
         trap_pool, trap_removed = apply_trap_v3(session_pool, hot_digits, cold_digits, due_digits)
